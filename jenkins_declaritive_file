@@ -1,0 +1,61 @@
+pipeline {
+    agent any
+    tools {
+  maven 'maven'
+    }
+  stages {
+        stage('SCM checkout') {
+            steps {
+                git credentialsId: 'github', url: 'https://github.com/athulj07/my-app.git'
+            }
+        }
+    stage ('maven build'){
+            steps {
+                sh "mvn clean package"
+                sh 'mv target/myweb*.war target/newapp.war'
+            }
+        }
+    stage ('sonarqube code analysis'){
+        steps {
+              withSonarQubeEnv('sonar') {
+                sh 'mvn sonar:sonar'
+                }
+            }
+        }
+    stage ('docker build'){
+        steps{
+            sh "docker build -t athulj07/myweb ."
+            }
+        }
+    stage('Nexus Image Push'){
+        steps{
+        withCredentials([string(credentialsId: 'nexus', variable: 'nexuspwd')]) {
+        sh "docker login -u admin -p ${nexuspwd} 13.233.34.88:8085"
+        sh "docker tag athulj07/myweb 13.233.34.88:8085/athul"
+        sh 'docker push 13.233.34.88:8085/athul'
+            }
+        }
+   }
+    stage('Remove Previous Container'){
+        steps{
+            script{
+	try{
+		sh 'docker rm -f test'
+	}catch(error){
+		//  do nothing if there is an exception
+            }
+	    }
+    }
+}
+    stage ('docker deploy'){
+        steps{
+            sh "docker run -itd -p 9090:8080 --name test athulj07/myweb"
+            }
+        }
+    stage ('email notification'){
+        steps{
+        emailext body: 'your code is successfully deployed', recipientProviders: [developers()], subject: 'jenkins build', to: 'athulj07@gmail.com'
+            }
+        }
+    }
+}
